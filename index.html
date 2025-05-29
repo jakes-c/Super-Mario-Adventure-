@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Mario Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui">
+            <div>Score: <span id="score">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>
+            <div>Level: <span id="level">1</span></div>
+        </div>
+
+        <div id="gameOver" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Game Over!</h2>
+                <p>Final Score: <span id="finalScore">0</span></p>
+                <button onclick="restartGame()">Play Again</button>
+            </div>
+        </div>
+
+        <div id="levelComplete" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Level Complete!</h2>
+                <p>Score: <span id="levelScore">0</span></p>
+                <button onclick="nextLevel()">Next Level</button>
+            </div>
+        </div>
+
+        <div id="gameWon" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h2>Congratulations!</h2>
+                <p>You completed all levels!</p>
+                <p>Final Score: <span id="winScore">0</span></p>
+                <button onclick="restartGame()">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        <p><strong>Controls:</strong></p>
+        <p>← → Arrow Keys: Move</p>
+        <p>Space: Jump</p>
+        <p>Collect coins and avoid enemies!</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
