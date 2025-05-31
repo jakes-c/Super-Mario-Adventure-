@@ -1,25 +1,85 @@
-// Game setup
+// Enhanced Platformer Game - JavaScript Part 1
+// Game setup and canvas initialization
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Set canvas size
+// Set canvas size to match your CSS
 canvas.width = 1000;
-canvas.height = 600;
+canvas.height = 500;
 
-// Game state
+// Asset Management System
+const assets = {
+    images: {},
+    sounds: {},
+    loaded: 0,
+    total: 0,
+    ready: false
+};
+
+// Fallback image creation for missing assets
+function createFallbackImage(width, height, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, width, height);
+    return canvas;
+}
+
+// Enhanced image sources with fallback support
+const imageSources = {
+    player: {
+        idle: 'images/player_idle.png',
+        run: 'images/player_run.png',
+        jump: 'images/player_jump.png'
+    },
+    enemy: {
+        red: 'images/enemy_red.png',
+        purple: 'images/enemy_purple.png',
+        pink: 'images/enemy_pink.png'
+    },
+    coin: 'images/coin.png',
+    platform: 'images/platform.png',
+    background: {
+        forest: 'images/bg_forest.png',
+        desert: 'images/bg_desert.png',
+        space: 'images/bg_space.png'
+    },
+    goal: 'images/goal_flag.png',
+    particles: {
+        coin: 'images/particle_gold.png',
+        hit: 'images/particle_red.png'
+    }
+};
+
+// Audio Management
+let audioMuted = false;
+const audioElements = {
+    jump: document.getElementById('jumpSound'),
+    coin: document.getElementById('coinSound'),
+    enemyHit: document.getElementById('enemyHitSound'),
+    levelComplete: document.getElementById('levelCompleteSound'),
+    gameOver: document.getElementById('gameOverSound'),
+    backgroundMusic: document.getElementById('backgroundMusic')
+};
+
+// Enhanced Game State
 let gameState = {
     score: 0,
     lives: 3,
     currentLevel: 1,
-    gameRunning: true,
+    gameRunning: false,
     keys: {},
-    camera: { x: 0, y: 0 }
+    camera: { x: 0, y: 0 },
+    screenShake: 0,
+    currentScreen: 'start' // start, instructions, game, gameOver, levelComplete, gameWon
 };
 
-// Player object
+// Enhanced Player object with better animation
 const player = {
     x: 50,
-    y: 400,
+    y: 350,
     width: 32,
     height: 40,
     velX: 0,
@@ -27,7 +87,13 @@ const player = {
     speed: 5,
     jumpPower: 15,
     grounded: false,
-    color: '#FF6B6B'
+    color: '#FF6B6B',
+    animState: 'idle',
+    animFrame: 0,
+    animTimer: 0,
+    direction: 1, // 1 for right, -1 for left
+    invulnerable: false,
+    invulnerabilityTimer: 0
 };
 
 // Game objects arrays
@@ -35,116 +101,316 @@ let platforms = [];
 let enemies = [];
 let coins = [];
 let particles = [];
+let goal = {};
 
-// Level configurations
+// Asset Loading Functions
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => {
+            console.warn(`Failed to load image: ${src}`);
+            // Create appropriate fallback based on image type
+            let fallback;
+            if (src.includes('player')) {
+                fallback = createFallbackImage(32, 40, '#FF6B6B');
+            } else if (src.includes('enemy')) {
+                const colors = {red: '#8B0000', purple: '#4B0082', pink: '#FF1493'};
+                const type = src.includes('red') ? 'red' : src.includes('purple') ? 'purple' : 'pink';
+                fallback = createFallbackImage(30, 30, colors[type] || '#8B0000');
+            } else if (src.includes('coin')) {
+                fallback = createFallbackImage(20, 20, '#FFD700');
+            } else if (src.includes('platform')) {
+                fallback = createFallbackImage(100, 20, '#8B4513');
+            } else if (src.includes('goal')) {
+                fallback = createFallbackImage(40, 70, '#32CD32');
+            } else {
+                fallback = createFallbackImage(32, 32, '#CCCCCC');
+            }
+            resolve(fallback);
+        };
+        img.src = src;
+    });
+}
+
+async function loadAssets() {
+    const loadingProgress = document.getElementById('loadingProgress');
+    const loadingText = document.getElementById('loadingText');
+    
+    // Show loading screen
+    document.getElementById('loadingScreen').style.display = 'flex';
+    
+    // Count total assets
+    let totalAssets = 0;
+    function countAssets(obj) {
+        for (let key in obj) {
+            if (typeof obj[key] === 'string') {
+                totalAssets++;
+            } else if (typeof obj[key] === 'object') {
+                countAssets(obj[key]);
+            }
+        }
+    }
+    countAssets(imageSources);
+    
+    let loadedAssets = 0;
+    
+    // Load images recursively
+    async function loadImagesRecursive(sources, target) {
+        for (let key in sources) {
+            if (typeof sources[key] === 'string') {
+                loadingText.textContent = `Loading ${key}...`;
+                target[key] = await loadImage(sources[key]);
+                loadedAssets++;
+                const progress = (loadedAssets / totalAssets) * 100;
+                loadingProgress.style.width = `${progress}%`;
+                
+                // Small delay to show progress
+                await new Promise(resolve => setTimeout(resolve, 50));
+            } else if (typeof sources[key] === 'object') {
+                target[key] = {};
+                await loadImagesRecursive(sources[key], target[key]);
+            }
+        }
+    }
+    
+    await loadImagesRecursive(imageSources, assets.images);
+    
+    // Setup audio with error handling
+    Object.keys(audioElements).forEach(key => {
+        if (audioElements[key]) {
+            assets.sounds[key] = audioElements[key];
+            assets.sounds[key].volume = key === 'backgroundMusic' ? 0.3 : 0.5;
+        }
+    });
+    
+    loadingText.textContent = 'Ready to play!';
+    loadingProgress.style.width = '100%';
+    
+    setTimeout(() => {
+        document.getElementById('loadingScreen').style.display = 'none';
+        assets.ready = true;
+        showStartScreen();
+    }, 800);
+}
+
+// Audio functions with better error handling
+function playSound(soundName) {
+    if (!audioMuted && assets.sounds[soundName]) {
+        try {
+            assets.sounds[soundName].currentTime = 0;
+            assets.sounds[soundName].play().catch(e => {
+                console.log(`Audio play failed for ${soundName}:`, e);
+            });
+        } catch (e) {
+            console.log(`Audio error for ${soundName}:`, e);
+        }
+    }
+}
+
+function toggleMute() {
+    audioMuted = !audioMuted;
+    const muteBtn = document.getElementById('muteBtn');
+    muteBtn.textContent = audioMuted ? '🔇' : '🔊';
+    
+    if (audioMuted) {
+        if (assets.sounds.backgroundMusic) {
+            assets.sounds.backgroundMusic.pause();
+        }
+    } else {
+        if (gameState.gameRunning && assets.sounds.backgroundMusic) {
+            assets.sounds.backgroundMusic.play().catch(e => 
+                console.log('Background music failed:', e)
+            );
+        }
+    }
+}
+
+// Screen management functions
+function showStartScreen() {
+    gameState.currentScreen = 'start';
+    document.getElementById('startScreen').style.display = 'flex';
+    document.getElementById('gameContainer').style.display = 'none';
+    hideAllModals();
+}
+
+function showInstructions() {
+    gameState.currentScreen = 'instructions';
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('instructionsScreen').style.display = 'flex';
+}
+
+function backToStart() {
+    document.getElementById('instructionsScreen').style.display = 'none';
+    document.getElementById('gameOver').style.display = 'none';
+    document.getElementById('gameWon').style.display = 'none';
+    showStartScreen();
+}
+
+function hideAllModals() {
+    const modals = ['gameOver', 'levelComplete', 'gameWon', 'instructionsScreen'];
+    modals.forEach(modal => {
+        document.getElementById(modal).style.display = 'none';
+    });
+}
+
+function startGame() {
+    gameState.currentScreen = 'game';
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('instructionsScreen').style.display = 'none';
+    document.getElementById('gameContainer').style.display = 'flex';
+    hideAllModals();
+    
+    // Initialize game
+    initGame();
+}
+// Enhanced Platformer Game - JavaScript Part 2
+// Level configurations with enhanced enemy types and better layouts
 const levels = {
     1: {
+        theme: 'forest',
         platforms: [
-            {x: 0, y: 550, width: 300, height: 50},
-            {x: 400, y: 500, width: 150, height: 20},
-            {x: 650, y: 400, width: 150, height: 20},
-            {x: 900, y: 350, width: 200, height: 20},
-            {x: 1200, y: 300, width: 150, height: 20},
-            {x: 1450, y: 550, width: 300, height: 50}
+            {x: 0, y: 450, width: 300, height: 50},
+            {x: 400, y: 400, width: 150, height: 20},
+            {x: 650, y: 350, width: 150, height: 20},
+            {x: 900, y: 300, width: 200, height: 20},
+            {x: 1200, y: 250, width: 150, height: 20},
+            {x: 1450, y: 450, width: 300, height: 50}
         ],
         enemies: [
-            {x: 450, y: 460, width: 30, height: 30, velX: -1, color: '#8B0000'},
-            {x: 950, y: 310, width: 30, height: 30, velX: 1, color: '#8B0000'},
-            {x: 1500, y: 510, width: 30, height: 30, velX: -1, color: '#8B0000'}
+            {x: 450, y: 360, width: 30, height: 30, velX: -1, type: 'red', platform: 1},
+            {x: 950, y: 260, width: 30, height: 30, velX: 1, type: 'red', platform: 3},
+            {x: 1500, y: 410, width: 30, height: 30, velX: -1, type: 'red', platform: 5}
         ],
         coins: [
-            {x: 470, y: 450, width: 20, height: 20},
-            {x: 700, y: 350, width: 20, height: 20},
-            {x: 950, y: 280, width: 20, height: 20},
-            {x: 1250, y: 250, width: 20, height: 20},
-            {x: 1550, y: 500, width: 20, height: 20}
+            {x: 470, y: 360, width: 20, height: 20, animFrame: 0},
+            {x: 700, y: 310, width: 20, height: 20, animFrame: 0},
+            {x: 950, y: 220, width: 20, height: 20, animFrame: 0},
+            {x: 1250, y: 210, width: 20, height: 20, animFrame: 0},
+            {x: 1550, y: 410, width: 20, height: 20, animFrame: 0}
         ],
-        goal: {x: 1600, y: 480, width: 40, height: 70}
+        goal: {x: 1600, y: 380, width: 40, height: 70}
     },
     2: {
+        theme: 'desert',
         platforms: [
-            {x: 0, y: 550, width: 300, height: 50},
-            {x: 400, y: 500, width: 150, height: 20},
-            {x: 650, y: 430, width: 150, height: 20},
-            {x: 900, y: 380, width: 150, height: 20},
-            {x: 1150, y: 450, width: 150, height: 20},
-            {x: 1400, y: 400, width: 150, height: 20},
-            {x: 1650, y: 550, width: 300, height: 50}
+            {x: 0, y: 450, width: 300, height: 50},
+            {x: 400, y: 400, width: 150, height: 20},
+            {x: 650, y: 330, width: 150, height: 20},
+            {x: 900, y: 280, width: 150, height: 20},
+            {x: 1150, y: 350, width: 150, height: 20},
+            {x: 1400, y: 300, width: 150, height: 20},
+            {x: 1650, y: 450, width: 300, height: 50}
         ],
         enemies: [
-            {x: 450, y: 460, width: 30, height: 30, velX: -0.6, color: '#4B0082'},
-            {x: 950, y: 340, width: 30, height: 30, velX: 0.6, color: '#4B0082'},
-            {x: 1750, y: 510, width: 30, height: 30, velX: -0.6, color: '#4B0082'}
+            {x: 450, y: 360, width: 30, height: 30, velX: -0.8, type: 'purple', platform: 1},
+            {x: 950, y: 240, width: 30, height: 30, velX: 0.8, type: 'purple', platform: 3},
+            {x: 1200, y: 310, width: 30, height: 30, velX: -0.8, type: 'purple', platform: 4},
+            {x: 1750, y: 410, width: 30, height: 30, velX: -0.8, type: 'purple', platform: 6}
         ],
         coins: [
-            {x: 470, y: 450, width: 20, height: 20},
-            {x: 700, y: 380, width: 20, height: 20},
-            {x: 950, y: 330, width: 20, height: 20},
-            {x: 1200, y: 400, width: 20, height: 20},
-            {x: 1450, y: 350, width: 20, height: 20}
+            {x: 470, y: 360, width: 20, height: 20, animFrame: 0},
+            {x: 700, y: 290, width: 20, height: 20, animFrame: 0},
+            {x: 950, y: 240, width: 20, height: 20, animFrame: 0},
+            {x: 1200, y: 310, width: 20, height: 20, animFrame: 0},
+            {x: 1450, y: 260, width: 20, height: 20, animFrame: 0},
+            {x: 1800, y: 410, width: 20, height: 20, animFrame: 0}
         ],
-        goal: {x: 1800, y: 480, width: 40, height: 70}
+        goal: {x: 1850, y: 380, width: 40, height: 70}
     },
     3: {
+        theme: 'space',
         platforms: [
-            {x: 0, y: 550, width: 250, height: 50},
-            {x: 350, y: 480, width: 120, height: 20},
-            {x: 550, y: 420, width: 120, height: 20},
-            {x: 750, y: 350, width: 120, height: 20},
-            {x: 950, y: 280, width: 120, height: 20},
-            {x: 1150, y: 350, width: 120, height: 20},
-            {x: 1350, y: 420, width: 120, height: 20},
-            {x: 1550, y: 480, width: 120, height: 20},
-            {x: 1750, y: 400, width: 120, height: 20},
-            {x: 1950, y: 550, width: 300, height: 50}
+            {x: 0, y: 450, width: 250, height: 50},
+            {x: 350, y: 380, width: 120, height: 20},
+            {x: 550, y: 320, width: 120, height: 20},
+            {x: 750, y: 250, width: 120, height: 20},
+            {x: 950, y: 180, width: 120, height: 20},
+            {x: 1150, y: 250, width: 120, height: 20},
+            {x: 1350, y: 320, width: 120, height: 20},
+            {x: 1550, y: 380, width: 120, height: 20},
+            {x: 1750, y: 300, width: 120, height: 20},
+            {x: 1950, y: 450, width: 300, height: 50}
         ],
         enemies: [
-            {x: 380, y: 440, width: 30, height: 30, velX: -1, color: '#FF1493'},
-            {x: 580, y: 380, width: 30, height: 30, velX: 1, color: '#FF1493'},
-            {x: 980, y: 240, width: 30, height: 30, velX: -1, color: '#FF1493'},
-            {x: 1180, y: 310, width: 30, height: 30, velX: 1, color: '#FF1493'},
-            {x: 1580, y: 440, width: 30, height: 30, velX: -1, color: '#FF1493'},
-            {x: 2050, y: 510, width: 30, height: 30, velX: -1, color: '#FF1493'}
+            {x: 380, y: 340, width: 30, height: 30, velX: -1.2, type: 'pink', platform: 1},
+            {x: 580, y: 280, width: 30, height: 30, velX: 1.2, type: 'pink', platform: 2},
+            {x: 980, y: 140, width: 30, height: 30, velX: -1.2, type: 'pink', platform: 4},
+            {x: 1180, y: 210, width: 30, height: 30, velX: 1.2, type: 'pink', platform: 5},
+            {x: 1580, y: 340, width: 30, height: 30, velX: -1.2, type: 'pink', platform: 7},
+            {x: 2050, y: 410, width: 30, height: 30, velX: -1.2, type: 'pink', platform: 9}
         ],
         coins: [
-            {x: 400, y: 430, width: 20, height: 20},
-            {x: 600, y: 370, width: 20, height: 20},
-            {x: 800, y: 300, width: 20, height: 20},
-            {x: 1000, y: 230, width: 20, height: 20},
-            {x: 1200, y: 300, width: 20, height: 20},
-            {x: 1400, y: 370, width: 20, height: 20},
-            {x: 1800, y: 350, width: 20, height: 20}
+            {x: 400, y: 340, width: 20, height: 20, animFrame: 0},
+            {x: 600, y: 280, width: 20, height: 20, animFrame: 0},
+            {x: 800, y: 210, width: 20, height: 20, animFrame: 0},
+            {x: 1000, y: 140, width: 20, height: 20, animFrame: 0},
+            {x: 1200, y: 210, width: 20, height: 20, animFrame: 0},
+            {x: 1400, y: 280, width: 20, height: 20, animFrame: 0},
+            {x: 1600, y: 340, width: 20, height: 20, animFrame: 0},
+            {x: 1800, y: 260, width: 20, height: 20, animFrame: 0}
         ],
-        goal: {x: 2100, y: 480, width: 40, height: 70}
+        goal: {x: 2100, y: 380, width: 40, height: 70}
     }
 };
 
-// Initialize level
+// Screen shake effect
+function addScreenShake(intensity = 10) {
+    gameState.screenShake = intensity;
+    // Add screen shake CSS class for additional effect
+    document.body.classList.add('screen-shake');
+    setTimeout(() => {
+        document.body.classList.remove('screen-shake');
+    }, 500);
+}
+
+// Initialize level with theme switching
 function initLevel(levelNum) {
     const level = levels[levelNum];
+    if (!level) return;
+    
     platforms = [...level.platforms];
     enemies = [...level.enemies];
     coins = [...level.coins];
     goal = {...level.goal};
     
+    // Update body class for theme
+    document.body.className = `level-${levelNum}`;
+    
+    // Add animation frames to coins
+    coins.forEach(coin => coin.animFrame = Math.random() * 60);
+    
     // Reset player position
     player.x = 50;
-    player.y = 400;
+    player.y = 350;
     player.velX = 0;
     player.velY = 0;
+    player.animState = 'idle';
+    player.invulnerable = false;
+    player.invulnerabilityTimer = 0;
     gameState.camera.x = 0;
+    gameState.screenShake = 0;
 }
 
-// Input handling
+// Enhanced Input handling
 document.addEventListener('keydown', (e) => {
     gameState.keys[e.code] = true;
+    
+    // Prevent default for game keys
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) {
+        e.preventDefault();
+    }
 });
 
 document.addEventListener('keyup', (e) => {
     gameState.keys[e.code] = false;
+    
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) {
+        e.preventDefault();
+    }
 });
 
-// Collision detection
+// Enhanced Collision detection
 function checkCollision(rect1, rect2) {
     return rect1.x < rect2.x + rect2.width &&
            rect1.x + rect1.width > rect2.x &&
@@ -152,305 +418,1086 @@ function checkCollision(rect1, rect2) {
            rect1.y + rect1.height > rect2.y;
 }
 
-// Create particle effect
-function createParticles(x, y, color) {
-    for (let i = 0; i < 8; i++) {
+// More precise platform collision
+function checkPlatformCollision(player, platform) {
+    if (checkCollision(player, platform)) {
+        // Check if player is falling onto platform from above
+        if (player.velY > 0 && player.y < platform.y) {
+            return 'top';
+        }
+        // Check side collisions
+        else if (player.x + player.width/2 < platform.x) {
+            return 'left';
+        }
+        else if (player.x + player.width/2 > platform.x + platform.width) {
+            return 'right';
+        }
+    }
+    return false;
+}
+
+// Enhanced particle system
+function createParticles(x, y, type = 'hit', count = 8) {
+    for (let i = 0; i < count; i++) {
         particles.push({
-            x: x,
-            y: y,
-            velX: (Math.random() - 0.5) * 10,
-            velY: Math.random() * -8 - 2,
-            life: 30,
-            color: color
+            x: x + (Math.random() - 0.5) * 10,
+            y: y + (Math.random() - 0.5) * 10,
+            velX: (Math.random() - 0.5) * 12,
+            velY: Math.random() * -10 - 2,
+            life: 30 + Math.random() * 20,
+            maxLife: 30 + Math.random() * 20,
+            type: type,
+            size: Math.random() * 6 + 2,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.3
         });
     }
 }
 
-// Update particles
+// Update particles with rotation
 function updateParticles() {
     particles = particles.filter(particle => {
         particle.x += particle.velX;
         particle.y += particle.velY;
-        particle.velY += 0.3;
+        particle.velY += 0.4; // gravity
+        particle.velX *= 0.98; // air resistance
+        particle.rotation += particle.rotationSpeed;
         particle.life--;
         return particle.life > 0;
     });
 }
 
-// Draw particles
-function drawParticles() {
-    particles.forEach(particle => {
-        ctx.globalAlpha = particle.life / 30;
-        ctx.fillStyle = particle.color;
-        ctx.fillRect(particle.x - gameState.camera.x, particle.y, 4, 4);
-        ctx.globalAlpha = 1;
-    });
+// Player animation system
+function updatePlayerAnimation() {
+    player.animTimer++;
+    
+    if (player.grounded) {
+        if (Math.abs(player.velX) > 0.5) {
+            player.animState = 'run';
+            if (player.animTimer % 6 === 0) { // Faster animation
+                player.animFrame = (player.animFrame + 1) % 4;
+            }
+        } else {
+            player.animState = 'idle';
+            if (player.animTimer % 40 === 0) { // Slower idle animation
+                player.animFrame = (player.animFrame + 1) % 2;
+            }
+        }
+    } else {
+        player.animState = 'jump';
+        player.animFrame = player.velY < 0 ? 0 : 1; // Different frame for up/down
+    }
+    
+    // Update direction
+    if (player.velX > 0.5) player.direction = 1;
+    else if (player.velX < -0.5) player.direction = -1;
 }
 
-// Player physics
+// Enhanced player invulnerability
+function updatePlayerInvulnerability() {
+    if (player.invulnerable) {
+        player.invulnerabilityTimer--;
+        if (player.invulnerabilityTimer <= 0) {
+            player.invulnerable = false;
+        }
+    }
+}
+// Enhanced Platformer Game - JavaScript Part 3
+// Enhanced Player physics with better movement
 function updatePlayer() {
     if (!gameState.gameRunning) return;
     
-    // Horizontal movement
+    // Update invulnerability
+    updatePlayerInvulnerability();
+    
+    // Horizontal movement with acceleration
+    const acceleration = 0.8;
+    const maxSpeed = player.speed;
+    const friction = 0.85;
+    
     if (gameState.keys['ArrowLeft']) {
-        player.velX = -player.speed;
+        player.velX = Math.max(player.velX - acceleration, -maxSpeed);
     } else if (gameState.keys['ArrowRight']) {
-        player.velX = player.speed;
+        player.velX = Math.min(player.velX + acceleration, maxSpeed);
     } else {
-        player.velX *= 0.8; // Friction
+        player.velX *= friction; // Apply friction
+        if (Math.abs(player.velX) < 0.1) player.velX = 0;
     }
     
-    // Jumping
-    if (gameState.keys['Space'] && player.grounded) {
+    // Jumping with coyote time
+    if (gameState.keys['Space'] && (player.grounded || player.coyoteTime > 0)) {
         player.velY = -player.jumpPower;
         player.grounded = false;
+        player.coyoteTime = 0;
+        playSound('jump');
     }
     
-    // Gravity
-    player.velY += 0.8;
-    if (player.velY > 15) player.velY = 15;
+    // Coyote time - allow jumping briefly after leaving platform
+    if (player.grounded) {
+        player.coyoteTime = 8;
+    } else if (player.coyoteTime > 0) {
+        player.coyoteTime--;
+    }
+    
+    // Enhanced gravity with terminal velocity
+    const gravity = 0.8;
+    const terminalVelocity = 16;
+    
+    player.velY += gravity;
+    if (player.velY > terminalVelocity) player.velY = terminalVelocity;
     
     // Update position
+    const oldX = player.x;
+    const oldY = player.y;
+    
     player.x += player.velX;
     player.y += player.velY;
     
-    // Platform collision
+    // Update animation
+    updatePlayerAnimation();
+    
+    // Enhanced platform collision
     player.grounded = false;
+    
     platforms.forEach(platform => {
-        if (checkCollision(player, platform)) {
-            if (player.velY > 0 && player.y < platform.y) {
-                player.y = platform.y - player.height;
-                player.velY = 0;
-                player.grounded = true;
-            }
+        const collision = checkPlatformCollision(player, platform);
+        
+        if (collision === 'top') {
+            player.y = platform.y - player.height;
+            player.velY = 0;
+            player.grounded = true;
+        } else if (collision === 'left' && player.velX > 0) {
+            player.x = platform.x - player.width;
+            player.velX = 0;
+        } else if (collision === 'right' && player.velX < 0) {
+            player.x = platform.x + platform.width;
+            player.velX = 0;
         }
     });
     
     // Screen boundaries
-    if (player.x < 0) player.x = 0;
-    if (player.y > canvas.height) {
-        // Player fell off screen
-        gameState.lives--;
-        updateUI();
-        if (gameState.lives <= 0) {
-            gameOver();
-        } else {
-            // Reset player position
-            player.x = 50;
-            player.y = 400;
-            player.velX = 0;
-            player.velY = 0;
-            gameState.camera.x = 0;
-        }
+    if (player.x < 0) {
+        player.x = 0;
+        player.velX = 0;
     }
     
-    // Update camera
-    gameState.camera.x = player.x - canvas.width / 3;
-    if (gameState.camera.x < 0) gameState.camera.x = 0;
+    // Death by falling
+    if (player.y > canvas.height + 100) {
+        handlePlayerDeath('fall');
+    }
+    
+    // Update camera with smooth following
+    const targetCameraX = player.x - canvas.width / 3;
+    const maxCameraX = Math.max(0, getCurrentLevelWidth() - canvas.width);
+    
+    gameState.camera.x += (Math.max(0, Math.min(targetCameraX, maxCameraX)) - gameState.camera.x) * 0.1;
 }
 
-// Update enemies
+// Get current level width for camera bounds
+function getCurrentLevelWidth() {
+    const level = levels[gameState.currentLevel];
+    if (!level) return canvas.width;
+    
+    let maxX = 0;
+    level.platforms.forEach(platform => {
+        maxX = Math.max(maxX, platform.x + platform.width);
+    });
+    return Math.max(maxX, goal.x + goal.width + 200);
+}
+
+// Handle player death with different types
+function handlePlayerDeath(type = 'enemy') {
+    if (player.invulnerable) return;
+    
+    gameState.lives--;
+    addScreenShake(type === 'fall' ? 25 : 15);
+    
+    // Create death particles
+    createParticles(
+        player.x + player.width/2, 
+        player.y + player.height/2, 
+        'hit', 
+        type === 'fall' ? 20 : 12
+    );
+    
+    playSound('enemyHit');
+    updateUI();
+    
+    if (gameState.lives <= 0) {
+        gameOver();
+    } else {
+        resetPlayerPosition();
+        // Grant brief invulnerability
+        player.invulnerable = true;
+        player.invulnerabilityTimer = 120; // 2 seconds at 60fps
+    }
+}
+
+// Reset player position with smooth transition
+function resetPlayerPosition() {
+    player.x = 50;
+    player.y = 350;
+    player.velX = 0;
+    player.velY = 0;
+    player.animState = 'idle';
+    player.coyoteTime = 0;
+    gameState.camera.x = 0;
+    
+    // Add transition effect
+    document.body.classList.add('level-transition');
+    setTimeout(() => {
+        document.body.classList.remove('level-transition');
+    }, 1000);
+}
+
+// Enhanced enemy system with better AI
 function updateEnemies() {
-    enemies.forEach(enemy => {
+    enemies.forEach((enemy, index) => {
+        const oldX = enemy.x;
         enemy.x += enemy.velX;
         
-        // Reverse direction at platform edges
+        // Enhanced platform edge detection
         let onPlatform = false;
-        platforms.forEach(platform => {
-            if (enemy.y + enemy.height >= platform.y && 
-                enemy.y + enemy.height <= platform.y + platform.height + 10 &&
-                enemy.x + enemy.width > platform.x && 
-                enemy.x < platform.x + platform.width) {
+        let platformBounds = null;
+        
+        // Find the platform this enemy is associated with
+        if (enemy.platform !== undefined && platforms[enemy.platform]) {
+            const platform = platforms[enemy.platform];
+            platformBounds = {
+                left: platform.x + 5, // Small margin
+                right: platform.x + platform.width - 35 // Account for enemy width
+            };
+            
+            // Check if enemy is still on the platform
+            if (enemy.x >= platformBounds.left && enemy.x <= platformBounds.right) {
                 onPlatform = true;
             }
-        });
-        
-        if (!onPlatform || enemy.x <= 0) {
-            enemy.velX *= -1;
-        }
-        
-        // Check collision with player
-        if (checkCollision(player, enemy)) {
-            gameState.lives--;
-            createParticles(player.x + player.width/2, player.y + player.height/2, '#FF0000');
-            updateUI();
-            if (gameState.lives <= 0) {
-                gameOver();
-            } else {
-                // Reset player position
-                player.x = 50;
-                player.y = 400;
-                player.velX = 0;
-                player.velY = 0;
-                gameState.camera.x = 0;
-            }
-        }
-    });
-}
-
-// Update coins
-function updateCoins() {
-    coins = coins.filter(coin => {
-        if (checkCollision(player, coin)) {
-            gameState.score += 100;
-            createParticles(coin.x + coin.width/2, coin.y + coin.height/2, '#FFD700');
-            updateUI();
-            return false; // Remove coin
-        }
-        return true;
-    });
-}
-
-// Check goal
-function checkGoal() {
-    if (checkCollision(player, goal)) {
-        if (gameState.currentLevel < 3) {
-            levelComplete();
         } else {
-            gameWon();
+            // Fallback: check all platforms
+            platforms.forEach(platform => {
+                if (enemy.y + enemy.height >= platform.y - 5 && 
+                    enemy.y + enemy.height <= platform.y + platform.height + 10 &&
+                    enemy.x + enemy.width > platform.x && 
+                    enemy.x < platform.x + platform.width) {
+                    onPlatform = true;
+                    platformBounds = {
+                        left: platform.x,
+                        right: platform.x + platform.width - enemy.width
+                    };
+                }
+            });
+        }
+        
+        // Reverse direction if at platform edge or hitting boundaries
+        if (!onPlatform || 
+            (platformBounds && (enemy.x <= platformBounds.left || enemy.x >= platformBounds.right))) {
+            enemy.velX *= -1;
+            enemy.x = oldX; // Revert position
+        }
+        
+        // Enemy-specific behavior based on type
+        switch (enemy.type) {
+            case 'red':
+                // Basic patrol enemy
+                break;
+            case 'purple':
+                // Slightly faster with occasional pause
+                if (Math.random() < 0.01) {
+                    enemy.pauseTimer = 60; // Pause for 1 second
+                }
+                if (enemy.pauseTimer > 0) {
+                    enemy.pauseTimer--;
+                    enemy.x = oldX; // Don't move during pause
+                }
+                break;
+            case 'pink':
+                // Fastest enemy with smooth movement
+                break;
+        }
+        // Enhanced Platformer Game - JavaScript Part 4
+// Continue enemy update and collision systems
+
+        // Check collision with player
+        if (!player.invulnerable && checkCollision(player, enemy)) {
+            handlePlayerDeath('enemy');
+        }
+    });
+}
+
+// Enhanced coin collection system
+function updateCoins() {
+    coins.forEach((coin, index) => {
+        // Animate coins
+        coin.animFrame += 0.2;
+        
+        // Floating animation
+        coin.y += Math.sin(coin.animFrame) * 0.5;
+        
+        // Check collection
+        if (checkCollision(player, coin)) {
+            // Remove coin
+            coins.splice(index, 1);
+            
+            // Add score
+            gameState.score += 100;
+            
+            // Create collection particles
+            createParticles(
+                coin.x + coin.width/2, 
+                coin.y + coin.height/2, 
+                'coin', 
+                6
+            );
+            
+            playSound('coin');
+            updateUI();
+        }
+    });
+}
+
+// Goal/flag collision
+function checkGoalCollision() {
+    if (checkCollision(player, goal)) {
+        // Bonus points for remaining coins
+        const coinBonus = coins.length * 50;
+        gameState.score += coinBonus;
+        
+        playSound('levelComplete');
+        
+        if (gameState.currentLevel < Object.keys(levels).length) {
+            showLevelComplete(coinBonus);
+        } else {
+            showGameWon();
         }
     }
 }
 
-// Drawing functions
-function drawPlayer() {
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x - gameState.camera.x, player.y, player.width, player.height);
+// Enhanced rendering system with improved graphics
+function render() {
+    // Clear canvas with background
+    ctx.fillStyle = '#87CEEB'; // Default sky blue
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Simple face
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(player.x - gameState.camera.x + 8, player.y + 8, 6, 6);
-    ctx.fillRect(player.x - gameState.camera.x + 18, player.y + 8, 6, 6);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(player.x - gameState.camera.x + 10, player.y + 10, 2, 2);
-    ctx.fillRect(player.x - gameState.camera.x + 20, player.y + 10, 2, 2);
+    // Apply screen shake
+    if (gameState.screenShake > 0) {
+        const shakeX = (Math.random() - 0.5) * gameState.screenShake;
+        const shakeY = (Math.random() - 0.5) * gameState.screenShake;
+        ctx.translate(shakeX, shakeY);
+        gameState.screenShake *= 0.9;
+        if (gameState.screenShake < 0.5) gameState.screenShake = 0;
+    }
+    
+    // Apply camera offset
+    ctx.save();
+    ctx.translate(-gameState.camera.x, 0);
+    
+    // Render background elements
+    renderBackground();
+    
+    // Render platforms with enhanced graphics
+    renderPlatforms();
+    
+    // Render coins with animation
+    renderCoins();
+    
+    // Render enemies with sprite support
+    renderEnemies();
+    
+    // Render goal
+    renderGoal();
+    
+    // Render player with animation
+    renderPlayer();
+    
+    // Render particles
+    renderParticles();
+    
+    ctx.restore();
+    
+    // Reset any transforms
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-function drawPlatforms() {
-    ctx.fillStyle = '#8B4513';
-    platforms.forEach(platform => {
-        ctx.fillRect(platform.x - gameState.camera.x, platform.y, platform.width, platform.height);
-        
-        // Add some texture
-        ctx.fillStyle = '#A0522D';
-        ctx.fillRect(platform.x - gameState.camera.x, platform.y, platform.width, 5);
-        ctx.fillStyle = '#8B4513';
-    });
-}
-
-function drawEnemies() {
-    enemies.forEach(enemy => {
-        ctx.fillStyle = enemy.color;
-        ctx.fillRect(enemy.x - gameState.camera.x, enemy.y, enemy.width, enemy.height);
-        
-        // Simple angry face
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(enemy.x - gameState.camera.x + 6, enemy.y + 6, 4, 4);
-        ctx.fillRect(enemy.x - gameState.camera.x + 16, enemy.y + 6, 4, 4);
-        ctx.fillStyle = '#FF0000';
-        ctx.fillRect(enemy.x - gameState.camera.x + 10, enemy.y + 16, 8, 4);
-    });
-}
-
-function drawCoins() {
-    coins.forEach(coin => {
-        ctx.fillStyle = '#FFD700';
+// Background rendering with parallax effect
+function renderBackground() {
+    const level = levels[gameState.currentLevel];
+    if (!level) return;
+    
+    // Simple gradient background based on theme
+    const gradients = {
+        forest: ['#87CEEB', '#98FB98'],
+        desert: ['#FFE4B5', '#F4A460'],
+        space: ['#191970', '#483D8B']
+    };
+    
+    const colors = gradients[level.theme] || gradients.forest;
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, colors[0]);
+    gradient.addColorStop(1, colors[1]);
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(gameState.camera.x, 0, canvas.width, canvas.height);
+    
+    // Add some simple background elements
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    for (let i = 0; i < 20; i++) {
+        const x = (i * 100 + gameState.camera.x * 0.3) % (canvas.width + 100);
+        const y = 50 + Math.sin(i) * 30;
+        const size = 10 + Math.sin(i * 2) * 5;
         ctx.beginPath();
-        ctx.arc(coin.x - gameState.camera.x + coin.width/2, coin.y + coin.height/2, coin.width/2, 0, Math.PI * 2);
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Enhanced platform rendering
+function renderPlatforms() {
+    ctx.fillStyle = '#8B4513';
+    ctx.strokeStyle = '#654321';
+    ctx.lineWidth = 2;
+    
+    platforms.forEach(platform => {
+        // Main platform
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+        ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+        
+        // Add texture lines
+        ctx.strokeStyle = '#A0522D';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < platform.width; i += 20) {
+            ctx.beginPath();
+            ctx.moveTo(platform.x + i, platform.y);
+            ctx.lineTo(platform.x + i, platform.y + platform.height);
+            ctx.stroke();
+        }
+        
+        // Grass/surface effect
+        ctx.fillStyle = '#228B22';
+        ctx.fillRect(platform.x, platform.y - 3, platform.width, 3);
+    });
+}
+
+// Enhanced coin rendering with animation
+function renderCoins() {
+    coins.forEach(coin => {
+        ctx.save();
+        
+        // Rotate coin for spinning effect
+        const centerX = coin.x + coin.width / 2;
+        const centerY = coin.y + coin.height / 2;
+        ctx.translate(centerX, centerY);
+        ctx.rotate(coin.animFrame * 0.1);
+        
+        // Draw coin with gradient
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, coin.width/2);
+        gradient.addColorStop(0, '#FFD700');
+        gradient.addColorStop(0.7, '#FFA500');
+        gradient.addColorStop(1, '#FF8C00');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, coin.width/2, 0, Math.PI * 2);
         ctx.fill();
         
         // Add shine effect
-        ctx.fillStyle = '#FFF8DC';
+        ctx.fillStyle = '#FFFF00';
         ctx.beginPath();
-        ctx.arc(coin.x - gameState.camera.x + coin.width/2 - 3, coin.y + coin.height/2 - 3, 3, 0, Math.PI * 2);
+        ctx.arc(-coin.width/6, -coin.height/6, coin.width/6, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Add border
+        ctx.strokeStyle = '#B8860B';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, coin.width/2, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.restore();
     });
 }
 
-function drawGoal() {
-    ctx.fillStyle = '#32CD32';
-    ctx.fillRect(goal.x - gameState.camera.x, goal.y, goal.width, goal.height);
-    
-    // Flag design
-    ctx.fillStyle = '#228B22';
-    ctx.fillRect(goal.x - gameState.camera.x, goal.y, 8, goal.height);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(goal.x - gameState.camera.x + 8, goal.y, 32, 25);
-    ctx.fillStyle = '#FF0000';
-    ctx.fillRect(goal.x - gameState.camera.x + 8, goal.y + 12, 32, 13);
+// Enhanced enemy rendering
+function renderEnemies() {
+    enemies.forEach(enemy => {
+        ctx.save();
+        
+        // Enemy colors based on type
+        const colors = {
+            red: '#DC143C',
+            purple: '#8A2BE2',
+            pink: '#FF69B4'
+        };
+        
+        // Body
+        ctx.fillStyle = colors[enemy.type] || colors.red;
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+        
+        // Add simple face
+        ctx.fillStyle = '#FFFFFF';
+        const eyeSize = 4;
+        ctx.fillRect(enemy.x + 6, enemy.y + 6, eyeSize, eyeSize);
+        ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 6, eyeSize, eyeSize);
+        
+        // Pupils
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(enemy.x + 7, enemy.y + 7, 2, 2);
+        ctx.fillRect(enemy.x + enemy.width - 9, enemy.y + 7, 2, 2);
+        
+        // Mouth (simple line)
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(enemy.x + 8, enemy.y + enemy.height - 8);
+        ctx.lineTo(enemy.x + enemy.width - 8, enemy.y + enemy.height - 8);
+        ctx.stroke();
+        
+        // Add glow effect for special enemies
+        if (enemy.type === 'pink') {
+            ctx.shadowColor = '#FF69B4';
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = '#FF69B4';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(enemy.x - 2, enemy.y - 2, enemy.width + 4, enemy.height + 4);
+            ctx.shadowBlur = 0;
+        }
+        
+        ctx.restore();
+    });
 }
 
-// Game loop
+// Goal rendering
+function renderGoal() {
+    ctx.save();
+    
+    // Flag pole
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(goal.x, goal.y, 4, goal.height);
+    
+    // Flag
+    ctx.fillStyle = '#32CD32';
+    ctx.fillRect(goal.x + 4, goal.y, goal.width - 4, 25);
+    
+    // Flag pattern
+    ctx.fillStyle = '#228B22';
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 2; j++) {
+            if ((i + j) % 2 === 0) {
+                ctx.fillRect(goal.x + 4 + i * 10, goal.y + j * 12, 10, 12);
+            }
+        }
+    }
+    
+    // Wave effect
+    const waveOffset = Math.sin(Date.now() * 0.01) * 2;
+    ctx.save();
+    ctx.translate(waveOffset, 0);
+    ctx.fillStyle = '#32CD32';
+    ctx.fillRect(goal.x + 4, goal.y, goal.width - 4, 25);
+    ctx.restore();
+    
+    ctx.restore();
+}
+
+// Enhanced player rendering with animation
+function renderPlayer() {
+    ctx.save();
+    
+    // Handle invulnerability flashing
+    if (player.invulnerable && Math.floor(player.invulnerabilityTimer / 6) % 2) {
+        ctx.globalAlpha = 0.5;
+    }
+    
+    // Flip sprite based on direction
+    if (player.direction === -1) {
+        ctx.scale(-1, 1);
+        ctx.translate(-(player.x + player.width), 0);
+    } else {
+        ctx.translate(player.x, 0);
+    }
+    
+    // Player body
+    ctx.fillStyle = player.color;
+    ctx.fillRect(0, player.y, player.width, player.height);
+    
+    // Animation-based rendering
+    switch (player.animState) {
+        case 'idle':
+            // Simple idle animation - slight size variation
+            const idleScale = 1 + Math.sin(player.animFrame * 0.5) * 0.02;
+            ctx.scale(1, idleScale);
+            break;
+        case 'run':
+            // Running animation - slight bounce
+            const runBounce = Math.abs(Math.sin(player.animFrame * 0.5)) * 2;
+            ctx.translate(0, runBounce);
+            break;
+        case 'jump':
+            // Jump animation - stretch based on velocity
+            const jumpScale = player.velY < 0 ? 1.1 : 0.9;
+            ctx.scale(1, jumpScale);
+            break;
+    }
+    
+    // Player face
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(6, player.y + 8, 4, 4);
+    ctx.fillRect(player.width - 10, player.y + 8, 4, 4);
+    
+    // Eyes
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(7, player.y + 9, 2, 2);
+    ctx.fillRect(player.width - 9, player.y + 9, 2, 2);
+    
+    // Mouth
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(player.width/2 - 2, player.y + player.height - 12, 4, 2);
+    
+    ctx.restore();
+}
+// Enhanced Platformer Game - JavaScript Part 5
+// Particle system and game flow
+
+// Enhanced particle rendering
+function renderParticles() {
+    particles.forEach(particle => {
+        ctx.save();
+        
+        const alpha = particle.life / particle.maxLife;
+        ctx.globalAlpha = alpha;
+        
+        // Translate and rotate
+        ctx.translate(particle.x, particle.y);
+        ctx.rotate(particle.rotation);
+        
+        // Different particle types
+        switch (particle.type) {
+            case 'coin':
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(0, 0, particle.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Sparkle effect
+                ctx.fillStyle = '#FFFF00';
+                ctx.beginPath();
+                ctx.arc(0, 0, particle.size * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+                
+            case 'hit':
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(-particle.size/2, -particle.size/2, particle.size, particle.size);
+                break;
+                
+            default:
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(-particle.size/2, -particle.size/2, particle.size, particle.size);
+        }
+        
+        ctx.restore();
+    });
+}
+
+// Game initialization
+function initGame() {
+    // Reset game state
+    gameState.score = 0;
+    gameState.lives = 3;
+    gameState.currentLevel = 1;
+    gameState.gameRunning = true;
+    gameState.camera = { x: 0, y: 0 };
+    gameState.screenShake = 0;
+    
+    // Initialize first level
+    initLevel(1);
+    
+    // Start background music
+    if (!audioMuted && assets.sounds.backgroundMusic) {
+        assets.sounds.backgroundMusic.loop = true;
+        assets.sounds.backgroundMusic.play().catch(e => 
+            console.log('Background music failed:', e)
+        );
+    }
+    
+    // Update UI
+    updateUI();
+    
+    // Start game loop
+    gameLoop();
+}
+
+// Main game loop
 function gameLoop() {
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!gameState.gameRunning) return;
     
     // Update game objects
     updatePlayer();
     updateEnemies();
     updateCoins();
     updateParticles();
-    checkGoal();
     
-    // Draw everything
-    drawPlatforms();
-    drawEnemies();
-    drawCoins();
-    drawGoal();
-    drawPlayer();
-    drawParticles();
+    // Check goal collision
+    checkGoalCollision();
     
+    // Render everything
+    render();
+    
+    // Continue loop
     requestAnimationFrame(gameLoop);
 }
 
-// UI functions
+// UI Update functions
 function updateUI() {
     document.getElementById('score').textContent = gameState.score;
     document.getElementById('lives').textContent = gameState.lives;
     document.getElementById('level').textContent = gameState.currentLevel;
+    
+    // Update lives display with hearts
+    const livesContainer = document.getElementById('lives-hearts');
+    if (livesContainer) {
+        livesContainer.innerHTML = '❤️'.repeat(Math.max(0, gameState.lives));
+    }
 }
 
-function gameOver() {
+// Level completion
+function showLevelComplete(coinBonus = 0) {
     gameState.gameRunning = false;
-    document.getElementById('finalScore').textContent = gameState.score;
-    document.getElementById('gameOver').style.display = 'flex';
-}
-
-function levelComplete() {
-    gameState.gameRunning = false;
-    document.getElementById('levelScore').textContent = gameState.score;
+    
+    // Stop background music
+    if (assets.sounds.backgroundMusic) {
+        assets.sounds.backgroundMusic.pause();
+    }
+    
+    // Show level complete modal
     document.getElementById('levelComplete').style.display = 'flex';
+    document.getElementById('levelScore').textContent = gameState.score;
+    document.getElementById('coinBonus').textContent = coinBonus;
+    document.getElementById('completedLevel').textContent = gameState.currentLevel;
+    
+    // Add celebration particles
+    setTimeout(() => {
+        for (let i = 0; i < 30; i++) {
+            createParticles(
+                canvas.width / 2 + gameState.camera.x,
+                canvas.height / 2,
+                'coin',
+                1
+            );
+        }
+    }, 500);
 }
 
-function gameWon() {
-    gameState.gameRunning = false;
-    document.getElementById('winScore').textContent = gameState.score;
-    document.getElementById('gameWon').style.display = 'flex';
-}
-
+// Continue to next level
 function nextLevel() {
     gameState.currentLevel++;
-    gameState.gameRunning = true;
+    
+    if (gameState.currentLevel > Object.keys(levels).length) {
+        showGameWon();
+        return;
+    }
+    
+    // Hide level complete modal
     document.getElementById('levelComplete').style.display = 'none';
+    
+    // Initialize next level
     initLevel(gameState.currentLevel);
-    updateUI();
-}
-
-function restartGame() {
-    gameState.score = 0;
-    gameState.lives = 3;
-    gameState.currentLevel = 1;
+    
+    // Restart game loop
     gameState.gameRunning = true;
-    gameState.camera.x = 0;
     
-    document.getElementById('gameOver').style.display = 'none';
-    document.getElementById('gameWon').style.display = 'none';
+    // Resume background music
+    if (!audioMuted && assets.sounds.backgroundMusic) {
+        assets.sounds.backgroundMusic.play().catch(e => 
+            console.log('Background music failed:', e)
+        );
+    }
     
-    initLevel(1);
     updateUI();
+    gameLoop();
 }
 
-// Initialize game
-initLevel(1);
-updateUI();
-gameLoop();
+// Game Over
+function gameOver() {
+    gameState.gameRunning = false;
+    
+    // Stop background music
+    if (assets.sounds.backgroundMusic) {
+        assets.sounds.backgroundMusic.pause();
+    }
+    
+    playSound('gameOver');
+    
+    // Show game over screen
+    document.getElementById('gameOver').style.display = 'flex';
+    document.getElementById('finalScore').textContent = gameState.score;
+    document.getElementById('reachedLevel').textContent = gameState.currentLevel;
+    
+    // Add dramatic screen shake
+    addScreenShake(30);
+}
+
+// Game Won (all levels completed)
+function showGameWon() {
+    gameState.gameRunning = false;
+    
+    // Stop background music
+    if (assets.sounds.backgroundMusic) {
+        assets.sounds.backgroundMusic.pause();
+    }
+    
+    // Calculate final bonus
+    const timeBonus = Math.max(0, 10000 - Date.now()); // Placeholder time bonus
+    const finalScore = gameState.score + timeBonus;
+    
+    // Show game won screen
+    document.getElementById('gameWon').style.display = 'flex';
+    document.getElementById('totalScore').textContent = finalScore;
+    document.getElementById('timeBonus').textContent = timeBonus;
+    
+    // Victory particles
+    for (let i = 0; i < 50; i++) {
+        setTimeout(() => {
+            createParticles(
+                Math.random() * canvas.width + gameState.camera.x,
+                Math.random() * canvas.height,
+                Math.random() > 0.5 ? 'coin' : 'hit',
+                1
+            );
+        }, i * 100);
+    }
+    
+    playSound('levelComplete');
+}
+
+// Restart game
+function restartGame() {
+    // Hide all modals
+    hideAllModals();
+    
+    // Reset particles
+    particles = [];
+    
+    // Start new game
+    initGame();
+}
+
+// Pause/Resume functionality
+function togglePause() {
+    if (gameState.currentScreen !== 'game') return;
+    
+    gameState.gameRunning = !gameState.gameRunning;
+    
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (gameState.gameRunning) {
+        pauseBtn.textContent = '⏸️';
+        gameLoop();
+        if (!audioMuted && assets.sounds.backgroundMusic) {
+            assets.sounds.backgroundMusic.play().catch(e => 
+                console.log('Background music failed:', e)
+            );
+        }
+    } else {
+        pauseBtn.textContent = '▶️';
+        if (assets.sounds.backgroundMusic) {
+            assets.sounds.backgroundMusic.pause();
+        }
+    }
+}
+
+// Keyboard shortcuts for game control
+document.addEventListener('keydown', (e) => {
+    switch(e.code) {
+        case 'KeyP':
+            if (gameState.currentScreen === 'game') {
+                togglePause();
+            }
+            break;
+        case 'KeyM':
+            toggleMute();
+            break;
+        case 'KeyR':
+            if (gameState.currentScreen === 'game' && !gameState.gameRunning) {
+                restartGame();
+            }
+            break;
+        case 'Escape':
+            if (gameState.currentScreen === 'game') {
+                backToStart();
+            }
+            break;
+    }
+});
+
+// Touch/Mobile controls
+let touchStartX = 0;
+let touchStartY = 0;
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+});
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+});
+
+canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // Interpret gestures
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        // Horizontal swipe
+        if (deltaX > 30) {
+            // Swipe right
+            gameState.keys['ArrowRight'] = true;
+            setTimeout(() => gameState.keys['ArrowRight'] = false, 200);
+        } else if (deltaX < -30) {
+            // Swipe left
+            gameState.keys['ArrowLeft'] = true;
+            setTimeout(() => gameState.keys['ArrowLeft'] = false, 200);
+        }
+    } else {
+        // Vertical swipe
+        if (deltaY < -30) {
+            // Swipe up (jump)
+            gameState.keys['Space'] = true;
+            setTimeout(() => gameState.keys['Space'] = false, 100);
+        }
+    }
+});
+
+// Performance monitoring
+let frameCount = 0;
+let lastTime = performance.now();
+let fps = 60;
+
+function updatePerformance() {
+    frameCount++;
+    const currentTime = performance.now();
+    
+    if (currentTime - lastTime >= 1000) {
+        fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+        frameCount = 0;
+        lastTime = currentTime;
+        
+        // Display FPS if performance container exists
+        const fpsDisplay = document.getElementById('fps');
+        if (fpsDisplay) {
+            fpsDisplay.textContent = `FPS: ${fps}`;
+        }
+    }
+}
+
+// Enhanced game loop with performance monitoring
+const originalGameLoop = gameLoop;
+gameLoop = function() {
+    updatePerformance();
+    originalGameLoop();
+};
+
+// Window focus/blur handling
+window.addEventListener('blur', () => {
+    if (gameState.gameRunning && gameState.currentScreen === 'game') {
+        togglePause();
+    }
+});
+
+// Resize handling
+window.addEventListener('resize', () => {
+    // Adjust canvas if needed (keep aspect ratio)
+    const container = document.getElementById('gameContainer');
+    if (container) {
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        
+        // Maintain aspect ratio
+        const aspectRatio = canvas.width / canvas.height;
+        let newWidth = containerWidth;
+        let newHeight = containerWidth / aspectRatio;
+        
+        if (newHeight > containerHeight) {
+            newHeight = containerHeight;
+            newWidth = containerHeight * aspectRatio;
+        }
+        
+        canvas.style.width = newWidth + 'px';
+        canvas.style.height = newHeight + 'px';
+    }
+});
+
+// Initialize the game when assets are loaded
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, starting asset loading...');
+    loadAssets();
+});
+
+// Error handling
+window.addEventListener('error', (e) => {
+    console.error('Game error:', e.error);
+    // Could show error message to user
+});
+
+// Debug mode (toggle with 'D' key)
+let debugMode = false;
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD' && e.ctrlKey) {
+        debugMode = !debugMode;
+        console.log('Debug mode:', debugMode ? 'ON' : 'OFF');
+    }
+});
+
+// Debug rendering
+function renderDebug() {
+    if (!debugMode) return;
+    
+    ctx.save();
+    ctx.translate(-gameState.camera.x, 0);
+    
+    // Player hitbox
+    ctx.strokeStyle = '#FF0000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(player.x, player.y, player.width, player.height);
+    
+    // Platform hitboxes
+    ctx.strokeStyle = '#00FF00';
+    platforms.forEach(platform => {
+        ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+    });
+    
+    // Enemy hitboxes
+    ctx.strokeStyle = '#FF00FF';
+    enemies.forEach(enemy => {
+        ctx.strokeRect(enemy.x, enemy.y, enemy.width, enemy.height);
+    });
+    
+    // Coin hitboxes
+    ctx.strokeStyle = '#FFFF00';
+    coins.forEach(coin => {
+        ctx.strokeRect(coin.x, coin.y, coin.width, coin.height);
+    });
+    
+    ctx.restore();
+    
+    // Debug info
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '12px monospace';
+    ctx.fillText(`Player: ${Math.round(player.x)}, ${Math.round(player.y)}`, 10, 30);
+    ctx.fillText(`Velocity: ${Math.round(player.velX)}, ${Math.round(player.velY)}`, 10, 45);
+    ctx.fillText(`Grounded: ${player.grounded}`, 10, 60);
+    ctx.fillText(`Camera: ${Math.round(gameState.camera.x)}`, 10, 75);
+    ctx.fillText(`FPS: ${fps}`, 10, 90);
+}
+
+// Add debug rendering to main render function
+const originalRender = render;
+render = function() {
+    originalRender();
+    renderDebug();
+};
+
+console.log('Enhanced Platformer Game - JavaScript Part 5 loaded');
