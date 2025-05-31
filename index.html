@@ -3,52 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Mario Game</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Enhanced Platformer Game</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-    <div id="gameContainer">
+<body class="level-1">
+    <div id="gameTitle">
+        <h1>🎮 Super Platformer Adventure 🎮</h1>
+        <p>Use Arrow Keys to move, Spacebar to jump!</p>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="startScreen" class="modal" style="display: flex;">
+        <div class="modal-content">
+            <h2>🎮 Welcome to Super Platformer! 🎮</h2>
+            <p>Navigate through exciting levels, collect coins, and avoid enemies!</p>
+            <div class="button-group">
+                <button onclick="showInstructions()" class="game-btn secondary">📋 Instructions</button>
+                <button onclick="startGame()" class="game-btn">🚀 Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions Screen -->
+    <div id="instructionsScreen" class="modal">
+        <div class="modal-content">
+            <h2>📋 How to Play</h2>
+            <div class="instructions-list">
+                <p>🏃 <strong>Move:</strong> Use Left/Right Arrow Keys</p>
+                <p>🦘 <strong>Jump:</strong> Press Spacebar</p>
+                <p>🪙 <strong>Collect:</strong> Gather coins for points</p>
+                <p>👹 <strong>Avoid:</strong> Stay away from enemies</p>
+                <p>🎯 <strong>Goal:</strong> Reach the end of each level</p>
+            </div>
+            <div class="button-group">
+                <button onclick="backToStart()" class="game-btn secondary">← Back</button>
+                <button onclick="startGame()" class="game-btn">🚀 Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameContainer" style="display: none;">
+        <!-- Left UI Panel -->
+        <div id="leftUI">
+            <div class="ui-item">
+                <span class="ui-label">Score</span>
+                <span id="score" class="ui-value">0</span>
+            </div>
+            <div class="ui-item">
+                <span class="ui-label">Lives</span>
+                <span id="lives" class="ui-value">3</span>
+            </div>
+            <div class="ui-item">
+                <span class="ui-label">Level</span>
+                <span id="level" class="ui-value">1</span>
+            </div>
+            <div class="ui-item">
+                <button id="muteBtn" onclick="toggleMute()">🔊</button>
+            </div>
+        </div>
+
+        <!-- Game Canvas -->
         <canvas id="gameCanvas"></canvas>
-        
-        <div id="ui">
-            <div>Score: <span id="score">0</span></div>
-            <div>Lives: <span id="lives">3</span></div>
-            <div>Level: <span id="level">1</span></div>
-        </div>
+    </div>
 
-        <div id="gameOver" class="modal" style="display: none;">
-            <div class="modal-content">
-                <h2>Game Over!</h2>
-                <p>Final Score: <span id="finalScore">0</span></p>
-                <button onclick="restartGame()">Play Again</button>
-            </div>
-        </div>
-
-        <div id="levelComplete" class="modal" style="display: none;">
-            <div class="modal-content">
-                <h2>Level Complete!</h2>
-                <p>Score: <span id="levelScore">0</span></p>
-                <button onclick="nextLevel()">Next Level</button>
-            </div>
-        </div>
-
-        <div id="gameWon" class="modal" style="display: none;">
-            <div class="modal-content">
-                <h2>Congratulations!</h2>
-                <p>You completed all levels!</p>
-                <p>Final Score: <span id="winScore">0</span></p>
-                <button onclick="restartGame()">Play Again</button>
+    <!-- Game Over Screen -->
+    <div id="gameOver" class="modal">
+        <div class="modal-content">
+            <h2>💀 Game Over 💀</h2>
+            <p>Your Final Score: <span id="finalScore">0</span></p>
+            <div class="button-group">
+                <button onclick="backToStart()" class="game-btn secondary">🏠 Main Menu</button>
+                <button onclick="restartGame()" class="game-btn">🔄 Try Again</button>
             </div>
         </div>
     </div>
 
-    <div id="instructions">
-        <p><strong>Controls:</strong></p>
-        <p>← → Arrow Keys: Move</p>
-        <p>Space: Jump</p>
-        <p>Collect coins and avoid enemies!</p>
+    <!-- Level Complete Screen -->
+    <div id="levelComplete" class="modal">
+        <div class="modal-content">
+            <h2>🎉 Level Complete! 🎉</h2>
+            <p>Score: <span id="levelScore">0</span></p>
+            <button onclick="nextLevel()" class="game-btn">➡️ Next Level</button>
+        </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Game Won Screen -->
+    <div id="gameWon" class="modal">
+        <div class="modal-content">
+            <h2>🏆 Congratulations! 🏆</h2>
+            <p>You completed all levels!</p>
+            <p>Final Score: <span id="winScore">0</span></p>
+            <div class="button-group">
+                <button onclick="backToStart()" class="game-btn secondary">🏠 Main Menu</button>
+                <button onclick="restartGame()" class="game-btn">🎮 Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="modal">
+        <div class="modal-content">
+            <h2>🎮 Loading Game Assets... 🎮</h2>
+            <div class="loading-bar">
+                <div id="loadingProgress" class="loading-fill"></div>
+            </div>
+            <p id="loadingText">Loading images and sounds...</p>
+        </div>
+    </div>
+
+    <!-- Audio Elements -->
+    <audio id="jumpSound" preload="auto">
+        <source src="sounds/jump.mp3" type="audio/mpeg">
+        <source src="sounds/jump.wav" type="audio/wav">
+    </audio>
+    
+    <audio id="coinSound" preload="auto">
+        <source src="sounds/coin.mp3" type="audio/mpeg">
+        <source src="sounds/coin.wav" type="audio/wav">
+    </audio>
+    
+    <audio id="enemyHitSound" preload="auto">
+        <source src="sounds/hit.mp3" type="audio/mpeg">
+        <source src="sounds/hit.wav" type="audio/wav">
+    </audio>
+    
+    <audio id="levelCompleteSound" preload="auto">
+        <source src="sounds/levelcomplete.mp3" type="audio/mpeg">
+        <source src="sounds/levelcomplete.wav" type="audio/wav">
+    </audio>
+    
+    <audio id="gameOverSound" preload="auto">
+        <source src="sounds/gameover.mp3" type="audio/mpeg">
+        <source src="sounds/gameover.wav" type="audio/wav">
+    </audio>
+    
+    <audio id="backgroundMusic" preload="auto" loop>
+        <source src="sounds/background.mp3" type="audio/mpeg">
+        <source src="sounds/background.wav" type="audio/wav">
+    </audio>
+
+    <script src="game.js"></script>
+
 </body>
 </html>
