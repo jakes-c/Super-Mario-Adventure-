@@ -76,8 +76,8 @@ let gameState = {
 const player = {
     x: 50,
     y: 350,
-    width: 32,
-    height: 40,
+    width: 62,
+    height: 70,
     velX: 0,
     velY: 0,
     speed: 5,
@@ -1522,3 +1522,309 @@ render = function() {
 };
 
 console.log('Enhanced Platformer Game - JavaScript Part 5 loaded');
+// Image Loading Fix - Add this to the end of your game.js file
+
+// Define the missing loadImage function
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+        img.src = src;
+    });
+}
+
+// Fix the image sources to match your actual file structure
+const fixedImageSources = {
+    player: {
+        idle: 'images/player.png',
+        run: 'images/player.png',
+        jump: 'images/player.png'
+    },
+    enemy: {
+        red: 'images/enemy.png',
+        purple: 'images/enemy.png',
+        pink: 'images/enemy.png'
+    },
+    coin: 'images/coin.png'
+};
+
+// Override the original imageSources with the fixed ones
+Object.assign(imageSources, fixedImageSources);
+
+// Enhanced fallback system that creates better looking sprites
+function createBetterFallbackImage(width, height, color, type = 'default') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    
+    switch (type) {
+        case 'player':
+            // Create a simple character sprite
+            ctx.fillStyle = color;
+            ctx.fillRect(8, 0, 16, 40); // body
+            ctx.fillStyle = '#FFE4C4'; // skin color
+            ctx.fillRect(10, 0, 12, 8); // head
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(12, 2, 2, 2); // left eye
+            ctx.fillRect(18, 2, 2, 2); // right eye
+            ctx.fillRect(14, 4, 4, 1); // mouth
+            break;
+            
+        case 'enemy':
+            // Create enemy sprite with spikes
+            ctx.fillStyle = color;
+            ctx.fillRect(2, 10, 26, 20); // body
+            // Add spikes
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                ctx.moveTo(2 + i * 4, 10);
+                ctx.lineTo(4 + i * 4, 5);
+                ctx.lineTo(6 + i * 4, 10);
+            }
+            ctx.fill();
+            // Eyes
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(8, 15, 3, 3);
+            ctx.fillRect(19, 15, 3, 3);
+            break;
+            
+        case 'coin':
+            // Create a golden coin
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) / 2 - 2;
+            
+            // Outer circle
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner shine
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(centerX - 2, centerY - 2, radius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Border
+            ctx.strokeStyle = '#B8860B';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+            
+        default:
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, width, height);
+    }
+    
+    return canvas;
+}
+
+// Improved asset loading with better error handling and fallbacks
+async function improvedLoadAssets() {
+    const loadingProgress = document.getElementById('loadingProgress');
+    const loadingText = document.getElementById('loadingText');
+    
+    // Show loading screen
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) {
+        loadingScreen.style.display = 'flex';
+    }
+    
+    console.log('Starting improved asset loading...');
+    
+    // Load images with better fallbacks
+    try {
+        // Player images
+        if (loadingText) loadingText.textContent = 'Loading player sprites...';
+        try {
+            assets.images.player = {
+                idle: await loadImage('images/player.png'),
+                run: await loadImage('images/player.png'),
+                jump: await loadImage('images/player.png')
+            };
+            console.log('Player sprites loaded successfully');
+        } catch (error) {
+            console.warn('Player sprites failed to load, using fallback');
+            assets.images.player = {
+                idle: createBetterFallbackImage(32, 40, '#FF6B6B', 'player'),
+                run: createBetterFallbackImage(32, 40, '#FF6B6B', 'player'),
+                jump: createBetterFallbackImage(32, 40, '#FF6B6B', 'player')
+            };
+        }
+        
+        if (loadingProgress) loadingProgress.style.width = '33%';
+        
+        // Enemy images
+        if (loadingText) loadingText.textContent = 'Loading enemy sprites...';
+        try {
+            const enemyImg = await loadImage('images/enemy.png');
+            assets.images.enemy = {
+                red: enemyImg,
+                purple: enemyImg,
+                pink: enemyImg
+            };
+            console.log('Enemy sprites loaded successfully');
+        } catch (error) {
+            console.warn('Enemy sprites failed to load, using fallback');
+            assets.images.enemy = {
+                red: createBetterFallbackImage(30, 30, '#DC143C', 'enemy'),
+                purple: createBetterFallbackImage(30, 30, '#8A2BE2', 'enemy'),
+                pink: createBetterFallbackImage(30, 30, '#FF69B4', 'enemy')
+            };
+        }
+        
+        if (loadingProgress) loadingProgress.style.width = '66%';
+        
+        // Coin image
+        if (loadingText) loadingText.textContent = 'Loading coin sprites...';
+        try {
+            assets.images.coin = await loadImage('images/coin.png');
+            console.log('Coin sprite loaded successfully');
+        } catch (error) {
+            console.warn('Coin sprite failed to load, using fallback');
+            assets.images.coin = createBetterFallbackImage(20, 20, '#FFD700', 'coin');
+        }
+        
+        if (loadingProgress) loadingProgress.style.width = '100%';
+        
+    } catch (error) {
+        console.error('Critical error in asset loading:', error);
+    }
+    
+    // Setup audio with improved error handling
+    if (loadingText) loadingText.textContent = 'Setting up audio...';
+    
+    Object.keys(audioElements).forEach(key => {
+        const audioElement = audioElements[key];
+        if (audioElement && audioElement.tagName === 'AUDIO') {
+            assets.sounds[key] = audioElement;
+            assets.sounds[key].volume = key === 'backgroundMusic' ? 0.3 : 0.5;
+            
+            audioElement.addEventListener('error', (e) => {
+                console.warn(`Audio failed to load: ${key}`, e);
+            });
+        } else {
+            console.warn(`Audio element not found: ${key}`);
+        }
+    });
+    
+    // Finish loading
+    if (loadingText) loadingText.textContent = 'Ready to play!';
+    if (loadingProgress) loadingProgress.style.width = '100%';
+    
+    setTimeout(() => {
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        assets.ready = true;
+        console.log('All assets loaded, showing start screen');
+        showStartScreen();
+    }, 800);
+}
+
+// Replace the original loadAssets function
+loadAssets = improvedLoadAssets;
+
+// Debug function to check what's actually loaded
+function checkLoadedAssets() {
+    console.log('=== LOADED ASSETS CHECK ===');
+    console.log('Player sprites:', assets.images.player);
+    console.log('Enemy sprites:', assets.images.enemy);
+    console.log('Coin sprite:', assets.images.coin);
+    console.log('Audio elements:', Object.keys(assets.sounds));
+    console.log('Assets ready:', assets.ready);
+    console.log('==========================');
+}
+
+// Call this in browser console to check: checkLoadedAssets()
+
+// Fix the coin rendering to use the loaded/fallback image
+function renderCoinsFixed() {
+    coins.forEach(coin => {
+        ctx.save();
+        
+        if (assets.images.coin) {
+            // Use the loaded or fallback coin image
+            const centerX = coin.x + coin.width / 2;
+            const centerY = coin.y + coin.height / 2;
+            
+            ctx.translate(centerX, centerY);
+            ctx.rotate(coin.animFrame * 0.1);
+            ctx.drawImage(assets.images.coin, -coin.width/2, -coin.height/2, coin.width, coin.height);
+        } else {
+            // Ultra fallback if even the fallback fails
+            ctx.translate(coin.x + coin.width / 2, coin.y + coin.height / 2);
+            ctx.rotate(coin.animFrame * 0.1);
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(0, 0, coin.width/2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(-coin.width/6, -coin.height/6, coin.width/6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    });
+}
+
+// Override the original renderCoins function
+renderCoins = renderCoinsFixed;
+
+// Fix player rendering to use loaded sprites
+function renderPlayerFixed() {
+    ctx.save();
+    
+    // Handle invulnerability flashing
+    if (player.invulnerable && Math.floor(player.invulnerabilityTimer / 6) % 2) {
+        ctx.globalAlpha = 0.5;
+    }
+    
+    // Flip sprite based on direction
+    if (player.direction === -1) {
+        ctx.scale(-1, 1);
+        ctx.translate(-(player.x + player.width), 0);
+    } else {
+        ctx.translate(player.x, 0);
+    }
+    
+    // Get appropriate player sprite
+    let playerSprite = null;
+    if (assets.images.player) {
+        switch (player.animState) {
+            case 'idle':
+                playerSprite = assets.images.player.idle;
+                break;
+            case 'run':
+                playerSprite = assets.images.player.run;
+                break;
+            case 'jump':
+                playerSprite = assets.images.player.jump;
+                break;
+            default:
+                playerSprite = assets.images.player.idle;
+        }
+    }
+    
+    if (playerSprite) {
+        ctx.drawImage(playerSprite, 0, player.y, player.width, player.height);
+    } else {
+        // Ultra fallback
+        ctx.fillStyle = player.color;
+        ctx.fillRect(0, player.y, player.width, player.height);
+    }
+    
+    ctx.restore();
+}
+
+// Override the original renderPlayer function
+renderPlayer = renderPlayerFixed;
+
+console.log('Image loading fix applied! Your sprites should now load correctly or show nice fallbacks.');
+console.log('If images still don\'t load, check that your image files are in the correct "images/" folder.');
