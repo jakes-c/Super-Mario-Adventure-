@@ -30,22 +30,18 @@ function createFallbackImage(width, height, color) {
 // Enhanced image sources with fallback support
 const imageSources = {
     player: {
-        idle: 'images/player_idle.png',
-        run: 'images/player_run.png',
-        jump: 'images/player_jump.png'
+        idle: 'images/player.png',  // or your specific idle sprite
+        run: 'images/player.png',   // you can use the same image for now
+        jump: 'images/player.png'   // or create separate sprites
     },
     enemy: {
-        red: 'images/enemy_red.png',
-        purple: 'images/enemy_purple.png',
-        pink: 'images/enemy_pink.png'
+        red: 'images/enemy.png',     // your enemy.png file
+        purple: 'images/enemy.png',  // you can use the same image or create variants
+        pink: 'images/enemy.png'
     },
     coin: 'images/coin.png',
-    platform: 'images/platform.png',
-    background: {
-        forest: 'images/bg_forest.png',
-        desert: 'images/bg_desert.png',
-        space: 'images/bg_space.png'
-    },
+    // ... rest of your image sources
+
     goal: 'images/goal_flag.png',
     particles: {
         coin: 'images/particle_gold.png',
@@ -61,7 +57,7 @@ const audioElements = {
     enemyHit: document.getElementById('enemyHitSound'),
     levelComplete: document.getElementById('levelCompleteSound'),
     gameOver: document.getElementById('gameOverSound'),
-    backgroundMusic: document.getElementById('backgroundMusic')
+    backgroundMusic: document.getElementById('backgroundMusicGround') // Changed from 'backgroundMusic'
 };
 
 // Enhanced Game State
@@ -104,41 +100,15 @@ let particles = [];
 let goal = {};
 
 // Asset Loading Functions
-function loadImage(src) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => {
-            console.warn(`Failed to load image: ${src}`);
-            // Create appropriate fallback based on image type
-            let fallback;
-            if (src.includes('player')) {
-                fallback = createFallbackImage(32, 40, '#FF6B6B');
-            } else if (src.includes('enemy')) {
-                const colors = {red: '#8B0000', purple: '#4B0082', pink: '#FF1493'};
-                const type = src.includes('red') ? 'red' : src.includes('purple') ? 'purple' : 'pink';
-                fallback = createFallbackImage(30, 30, colors[type] || '#8B0000');
-            } else if (src.includes('coin')) {
-                fallback = createFallbackImage(20, 20, '#FFD700');
-            } else if (src.includes('platform')) {
-                fallback = createFallbackImage(100, 20, '#8B4513');
-            } else if (src.includes('goal')) {
-                fallback = createFallbackImage(40, 70, '#32CD32');
-            } else {
-                fallback = createFallbackImage(32, 32, '#CCCCCC');
-            }
-            resolve(fallback);
-        };
-        img.src = src;
-    });
-}
-
 async function loadAssets() {
     const loadingProgress = document.getElementById('loadingProgress');
     const loadingText = document.getElementById('loadingText');
     
     // Show loading screen
-    document.getElementById('loadingScreen').style.display = 'flex';
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) {
+        loadingScreen.style.display = 'flex';
+    }
     
     // Count total assets
     let totalAssets = 0;
@@ -159,11 +129,24 @@ async function loadAssets() {
     async function loadImagesRecursive(sources, target) {
         for (let key in sources) {
             if (typeof sources[key] === 'string') {
-                loadingText.textContent = `Loading ${key}...`;
-                target[key] = await loadImage(sources[key]);
+                if (loadingText) {
+                    loadingText.textContent = `Loading ${key}...`;
+                }
+                
+                try {
+                    target[key] = await loadImage(sources[key]);
+                    console.log(`Successfully loaded image: ${key}`);
+                } catch (error) {
+                    console.error(`Failed to load image ${key}:`, error);
+                    // Use fallback image
+                    target[key] = createFallbackImage(32, 32, '#CCCCCC');
+                }
+                
                 loadedAssets++;
                 const progress = (loadedAssets / totalAssets) * 100;
-                loadingProgress.style.width = `${progress}%`;
+                if (loadingProgress) {
+                    loadingProgress.style.width = `${progress}%`;
+                }
                 
                 // Small delay to show progress
                 await new Promise(resolve => setTimeout(resolve, 50));
@@ -174,40 +157,106 @@ async function loadAssets() {
         }
     }
     
-    await loadImagesRecursive(imageSources, assets.images);
+    try {
+        await loadImagesRecursive(imageSources, assets.images);
+        console.log('All images loaded successfully');
+    } catch (error) {
+        console.error('Error loading images:', error);
+    }
     
     // Setup audio with error handling
     Object.keys(audioElements).forEach(key => {
-        if (audioElements[key]) {
-            assets.sounds[key] = audioElements[key];
+        const audioElement = audioElements[key];
+        if (audioElement && audioElement.tagName === 'AUDIO') {
+            assets.sounds[key] = audioElement;
             assets.sounds[key].volume = key === 'backgroundMusic' ? 0.3 : 0.5;
+            
+            // Add error handling for audio loading
+            audioElement.addEventListener('error', (e) => {
+                console.warn(`Failed to load audio: ${key}`, e);
+            });
+        } else {
+            console.warn(`Audio element not found: ${key}`);
         }
     });
     
-    loadingText.textContent = 'Ready to play!';
-    loadingProgress.style.width = '100%';
+    if (loadingText) {
+        loadingText.textContent = 'Ready to play!';
+    }
+    if (loadingProgress) {
+        loadingProgress.style.width = '100%';
+    }
     
     setTimeout(() => {
-        document.getElementById('loadingScreen').style.display = 'none';
+        if (loadingScreen) {
+            loadingScreen.style.display = 'none';
+        }
         assets.ready = true;
         showStartScreen();
     }, 800);
 }
+// Debug function - add after loadAssets function
+function debugAssets() {
+    console.log('=== ASSET DEBUG ===');
+    console.log('Audio elements found:');
+    Object.keys(audioElements).forEach(key => {
+        const element = audioElements[key];
+        console.log(`${key}:`, element ? 'Found' : 'Missing', element?.src || 'No src');
+    });
+    
+    console.log('Images to load:');
+    console.log(imageSources);
+    
+    console.log('Assets ready:', assets.ready);
+    console.log('=================');
+}
+
+// Call this in browser console: debugAssets()
 
 // Audio functions with better error handling
 function playSound(soundName) {
     if (!audioMuted && assets.sounds[soundName]) {
         try {
-            assets.sounds[soundName].currentTime = 0;
-            assets.sounds[soundName].play().catch(e => {
-                console.log(`Audio play failed for ${soundName}:`, e);
+            const audio = assets.sounds[soundName];
+            audio.currentTime = 0;
+            
+            // Create a promise-based play with better error handling
+            const playPromise = audio.play();
+            
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.log(`Audio play failed for ${soundName}:`, error.message);
+                    // Don't throw error, just log it
+                });
+            }
+        } catch (error) {
+            console.log(`Audio error for ${soundName}:`, error.message);
+        }
+    } else if (!assets.sounds[soundName]) {
+        console.warn(`Sound not found: ${soundName}`);
+    }
+}
+// Function to handle audio context resume (needed for some browsers)
+function resumeAudioContext() {
+    if (typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined') {
+        const AudioContextClass = AudioContext || webkitAudioContext;
+        if (!window.gameAudioContext) {
+            window.gameAudioContext = new AudioContextClass();
+        }
+        
+        if (window.gameAudioContext.state === 'suspended') {
+            window.gameAudioContext.resume().then(() => {
+                console.log('Audio context resumed');
+            }).catch(err => {
+                console.log('Failed to resume audio context:', err);
             });
-        } catch (e) {
-            console.log(`Audio error for ${soundName}:`, e);
         }
     }
 }
 
+// Call this on first user interaction
+document.addEventListener('click', resumeAudioContext, { once: true });
+document.addEventListener('keydown', resumeAudioContext, { once: true });
 function toggleMute() {
     audioMuted = !audioMuted;
     const muteBtn = document.getElementById('muteBtn');
@@ -919,50 +968,37 @@ function renderCoins() {
 // Enhanced enemy rendering
 function renderEnemies() {
     enemies.forEach(enemy => {
-        ctx.save();
-        
-        // Enemy colors based on type
+    ctx.save();
+    
+    // Get appropriate enemy sprite
+    let enemySprite;
+    if (assets.images.enemy && assets.images.enemy[enemy.type]) {
+        enemySprite = assets.images.enemy[enemy.type];
+    } else {
+        // Fallback colors
         const colors = {
             red: '#DC143C',
             purple: '#8A2BE2',
             pink: '#FF69B4'
         };
-        
-        // Body
-        ctx.fillStyle = colors[enemy.type] || colors.red;
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-        
-        // Add simple face
-        ctx.fillStyle = '#FFFFFF';
-        const eyeSize = 4;
-        ctx.fillRect(enemy.x + 6, enemy.y + 6, eyeSize, eyeSize);
-        ctx.fillRect(enemy.x + enemy.width - 10, enemy.y + 6, eyeSize, eyeSize);
-        
-        // Pupils
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(enemy.x + 7, enemy.y + 7, 2, 2);
-        ctx.fillRect(enemy.x + enemy.width - 9, enemy.y + 7, 2, 2);
-        
-        // Mouth (simple line)
-        ctx.strokeStyle = '#000000';
+        enemySprite = createFallbackImage(30, 30, colors[enemy.type] || colors.red);
+    }
+    
+    // Draw enemy sprite
+    ctx.drawImage(enemySprite, enemy.x, enemy.y, enemy.width, enemy.height);
+    
+    // Add glow effect for special enemies (optional)
+    if (enemy.type === 'pink') {
+        ctx.shadowColor = '#FF69B4';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#FF69B4';
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(enemy.x + 8, enemy.y + enemy.height - 8);
-        ctx.lineTo(enemy.x + enemy.width - 8, enemy.y + enemy.height - 8);
-        ctx.stroke();
-        
-        // Add glow effect for special enemies
-        if (enemy.type === 'pink') {
-            ctx.shadowColor = '#FF69B4';
-            ctx.shadowBlur = 10;
-            ctx.strokeStyle = '#FF69B4';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(enemy.x - 2, enemy.y - 2, enemy.width + 4, enemy.height + 4);
-            ctx.shadowBlur = 0;
-        }
-        
-        ctx.restore();
-    });
+        ctx.strokeRect(enemy.x - 2, enemy.y - 2, enemy.width + 4, enemy.height + 4);
+        ctx.shadowBlur = 0;
+    }
+    
+    ctx.restore();
+});
 }
 
 // Goal rendering
@@ -1016,41 +1052,26 @@ function renderPlayer() {
     }
     
     // Player body
-    ctx.fillStyle = player.color;
-    ctx.fillRect(0, player.y, player.width, player.height);
-    
-    // Animation-based rendering
+   // Get appropriate player sprite based on animation state
+let playerSprite = assets.images.player?.idle || createFallbackImage(32, 40, player.color);
+
+// Select sprite based on animation state
+if (assets.images.player) {
     switch (player.animState) {
         case 'idle':
-            // Simple idle animation - slight size variation
-            const idleScale = 1 + Math.sin(player.animFrame * 0.5) * 0.02;
-            ctx.scale(1, idleScale);
+            playerSprite = assets.images.player.idle || playerSprite;
             break;
         case 'run':
-            // Running animation - slight bounce
-            const runBounce = Math.abs(Math.sin(player.animFrame * 0.5)) * 2;
-            ctx.translate(0, runBounce);
+            playerSprite = assets.images.player.run || playerSprite;
             break;
         case 'jump':
-            // Jump animation - stretch based on velocity
-            const jumpScale = player.velY < 0 ? 1.1 : 0.9;
-            ctx.scale(1, jumpScale);
+            playerSprite = assets.images.player.jump || playerSprite;
             break;
     }
-    
-    // Player face
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(6, player.y + 8, 4, 4);
-    ctx.fillRect(player.width - 10, player.y + 8, 4, 4);
-    
-    // Eyes
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(7, player.y + 9, 2, 2);
-    ctx.fillRect(player.width - 9, player.y + 9, 2, 2);
-    
-    // Mouth
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(player.width/2 - 2, player.y + player.height - 12, 4, 2);
+}
+
+// Draw player sprite
+ctx.drawImage(playerSprite, 0, player.y, player.width, player.height);
     
     ctx.restore();
 }
